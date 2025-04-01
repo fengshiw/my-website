@@ -12,7 +12,7 @@
             justify-content: center;
             align-items: center;
             font-family: 'Arial', sans-serif;
-            background: linear-gradient(135deg, #64b3f4, #acb6e5);
+            background: linear-gradient(135deg, #64b3f4, #ff8cfc);
             background-size: 400% 400%;
             animation: backgroundAnim 8s ease infinite;
         }
@@ -24,50 +24,28 @@
         }
 
         .content {
-            font-size: 3rem;
+            font-size: 5rem; /* 字体更大 */
+            font-weight: bold; /* 加粗 */
             color: white;
-            font-weight: bold;
             text-align: center;
             letter-spacing: 0.2em;
             opacity: 0;
-            animation: fadeIn 2s forwards;
+            transform: scale(0.5); /* 初始字体很小 */
+            animation: fadeInZoom 3s ease-out forwards;
         }
 
-        @keyframes fadeIn {
-            0% { opacity: 0; }
-            100% { opacity: 1; }
+        @keyframes fadeInZoom {
+            0% { opacity: 0; transform: scale(0.5); }
+            100% { opacity: 1; transform: scale(1); }
         }
 
-        .text {
-            display: inline-block;
-            opacity: 0;
-            animation: textAnim 0.5s ease forwards;
-            animation-delay: calc(0.5s * var(--i));
-        }
-
-        @keyframes textAnim {
-            0% { opacity: 0; transform: translateY(30px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
     </style>
 </head>
 <body>
 
     <div class="content">
-        <span class="text" style="--i: 1">你</span>
-        <span class="text" style="--i: 2">好</span>
-        <span class="text" style="--i: 3">呀</span>
+        你 好 呀 !
     </div>
 
-    <script>
-        window.onload = () => {
-            const texts = document.querySelectorAll('.text');
-            texts.forEach((text, index) => {
-                setTimeout(() => {
-                    text.style.opacity = 1;
-                }, index * 500);
-            });
-        };
-    </script>
 </body>
 </html>
