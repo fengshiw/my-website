@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>滤芯模糊搜索（支持上传 xlsx）</title>
+  <title>滤芯模糊搜索页面</title>
   <style>
     body {
       font-family: "Microsoft YaHei", Arial, sans-serif;
@@ -40,92 +40,67 @@
 </head>
 <body>
   <h1>滤芯模糊搜索页面</h1>
-  <!-- 上传文件控件 -->
   <input type="file" id="uploadFile" accept=".xlsx">
   <br>
-  <input type="text" id="searchBox" placeholder="输入关键词，试试你的型号、编码、适用车型……">
+  <input type="text" id="searchBox" placeholder="输入关键词，搜型号、编码、车型都行！">
   <div id="results"></div>
 
-  <!-- 引入 SheetJS 库 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
   <script>
-    // 默认数据（初始状态，可用上传文件替换）
-    var data = [
-      {"编码": "CS1001", "名称": "机油滤清器纸芯", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "1012012-E00-0000长效", "销售报价": "7.8", "适用车型": "一汽锡柴CA4DB1发动机", "装箱数": "75", "禁用标识": ""},
-      {"编码": "CS1003", "名称": "机油滤清器", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "JX0814 4100 1012D5-020 1012010-2-M JX0814B JX0816", "销售报价": "11", "适用车型": "主机配云内4100 云内4100 南充4110三顿轻卡 东风140 汽油141 142", "装箱数": "30", "禁用标识": ""},
-      {"编码": "CS1004", "名称": "机油滤清器", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "JX1010 1000622875", "销售报价": "13", "适用车型": "主机配云内490 扬柴4105 东风小卡 江淮 福田奥铃捷运", "装箱数": "30", "禁用标识": ""},
-      {"编码": "CS1005", "名称": "机油滤清器", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "JX0810D 1012010-X2", "销售报价": "10.5", "适用车型": "一汽大柴498 .小解放CA498.锡柴1012010-X2叉车 福田时代骑士", "装箱数": "40", "禁用标识": ""},
-      {"编码": "CS1006", "名称": "机油滤清器", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "JX0810D1", "销售报价": "10.5", "适用车型": "大柴498 东风 云内 新昌490 8", "装箱数": "40", "禁用标识": ""}
-    ];
+    let data = [];
 
-    // 渲染搜索结果到页面
     function renderResults(results) {
       if (results.length === 0) {
-        document.getElementById("results").innerHTML = "<p>呃，没有搜到相关结果哦～再试试其他关键词？</p>";
+        document.getElementById("results").innerHTML = "<p>没有搜到哎，再试试别的词？🙄</p>";
         return;
       }
-      var html = "<table><tr><th>编码</th><th>名称</th><th>主计量单位</th><th>物品分类</th><th>规格型号</th><th>销售报价</th><th>适用车型</th><th>装箱数</th><th>禁用标识</th></tr>";
-      results.forEach(function(item) {
-         html += "<tr>";
-         html += "<td>" + item["编码"] + "</td>";
-         html += "<td>" + item["名称"] + "</td>";
-         html += "<td>" + item["主计量单位"] + "</td>";
-         html += "<td>" + item["物品分类"] + "</td>";
-         html += "<td>" + item["规格型号"] + "</td>";
-         html += "<td>" + item["销售报价"] + "</td>";
-         html += "<td>" + item["适用车型"] + "</td>";
-         html += "<td>" + item["装箱数"] + "</td>";
-         html += "<td>" + item["禁用标识"] + "</td>";
-         html += "</tr>";
+      let html = "<table><tr>";
+      const keys = Object.keys(results[0]);
+      keys.forEach(k => html += `<th>${k}</th>`);
+      html += "</tr>";
+      results.forEach(item => {
+        html += "<tr>";
+        keys.forEach(k => html += `<td>${item[k] || ""}</td>`);
+        html += "</tr>";
       });
       html += "</table>";
       document.getElementById("results").innerHTML = html;
     }
 
-    // 简单模糊搜索函数：遍历每条数据的所有字段，看看是否包含关键词（不区分大小写）
     function fuzzySearch(query) {
       query = query.toLowerCase();
-      return data.filter(function(item) {
-         return Object.values(item).some(function(value) {
-            if(value) {
-              return value.toString().toLowerCase().includes(query);
-            }
-            return false;
-         });
-      });
+      return data.filter(item =>
+        Object.values(item).some(v =>
+          v && v.toString().toLowerCase().includes(query)
+        )
+      );
     }
 
-    // 监听输入框变化，实时更新搜索结果
     document.getElementById("searchBox").addEventListener("input", function() {
-      var query = this.value.trim();
-      if(query === "") {
-         renderResults(data);
-      } else {
-         var results = fuzzySearch(query);
-         renderResults(results);
-      }
+      const query = this.value.trim();
+      renderResults(query ? fuzzySearch(query) : data);
     });
 
-    // 文件上传后处理 xlsx 文件
-    document.getElementById('uploadFile').addEventListener('change', function(e) {
-      var file = e.target.files[0];
-      var reader = new FileReader();
+    document.getElementById("uploadFile").addEventListener("change", function(e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
       reader.onload = function(e) {
-        var dataArray = new Uint8Array(e.target.result);
-        var workbook = XLSX.read(dataArray, {type: 'array'});
-        var firstSheet = workbook.SheetNames[0];
-        var worksheet = workbook.Sheets[firstSheet];
-        // 将工作表转换为 JSON 对象数组
-        var jsonData = XLSX.utils.sheet_to_json(worksheet);
-        // 替换全局数据并重新渲染搜索结果
-        data = jsonData;
+        const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+        const sheet = workbook.SheetNames[0];
+        const raw = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header: 1});
+        const headers = raw[1]; // 第二行是表头
+        const rows = raw.slice(2); // 第三行开始是内容
+
+        data = rows.map(row => {
+          let obj = {};
+          headers.forEach((k, i) => obj[k] = row[i] || "");
+          return obj;
+        });
+
         renderResults(data);
       };
       reader.readAsArrayBuffer(file);
     });
-
-    // 初始显示所有数据
-    renderResults(data);
   </script>
 </body>
 </html>
