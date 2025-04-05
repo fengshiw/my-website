@@ -49,9 +49,21 @@
   <script>
     let data = [];
 
+    // 超级模糊搜索，去除所有特殊符号、空格、大小写
+    function fuzzySearch(query) {
+      const normalize = str => str.toString().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '');
+      const cleanQuery = normalize(query);
+      return data.filter(item =>
+        Object.values(item).some(v =>
+          v && normalize(v).includes(cleanQuery)
+        )
+      );
+    }
+
+    // 渲染搜索结果
     function renderResults(results) {
       if (results.length === 0) {
-        document.getElementById("results").innerHTML = "<p>没有搜到哎，再试试别的词？🙄</p>";
+        document.getElementById("results").innerHTML = "<p>没有搜到哎～你是不是输错了🙄</p>";
         return;
       }
       let html = "<table><tr>";
@@ -67,20 +79,13 @@
       document.getElementById("results").innerHTML = html;
     }
 
-    function fuzzySearch(query) {
-      query = query.toLowerCase();
-      return data.filter(item =>
-        Object.values(item).some(v =>
-          v && v.toString().toLowerCase().includes(query)
-        )
-      );
-    }
-
+    // 监听输入框变化
     document.getElementById("searchBox").addEventListener("input", function() {
       const query = this.value.trim();
       renderResults(query ? fuzzySearch(query) : data);
     });
 
+    // 上传 xlsx 解析
     document.getElementById("uploadFile").addEventListener("change", function(e) {
       const file = e.target.files[0];
       const reader = new FileReader();
@@ -88,7 +93,7 @@
         const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
         const sheet = workbook.SheetNames[0];
         const raw = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header: 1});
-        const headers = raw[1]; // 第二行是表头
+        const headers = raw[1]; // 第二行是字段名
         const rows = raw.slice(2); // 第三行开始是内容
 
         data = rows.map(row => {
