@@ -1,58 +1,131 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>你好呀</title>
-    <style>
-        body {
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: linear-gradient(135deg, #0d0d0d, #1a1a1a, #444); /* 更高级的苹果风格深色渐变 */
-            font-family: 'Noto Sans SC', sans-serif;
-            color: white;
-        }
-        .content {
-            font-size: 15rem;
-            font-weight: bold;
-            text-align: center;
-            letter-spacing: 0.1em; /* 适当调整字间距 */
-        }
-        .char {
-            display: inline-block;
-            opacity: 0;
-            transform: scale(0.2);
-            animation: fadeInScale 0.6s ease-out forwards;
-        }
-        @keyframes fadeInScale {
-            0% {
-                opacity: 0;
-                transform: scale(0.2);
-            }
-            100% {
-                opacity: 1;
-                transform: scale(1);
-            }
-        }
-    </style>
+  <meta charset="utf-8">
+  <title>滤芯模糊搜索（支持上传 xlsx）</title>
+  <style>
+    body {
+      font-family: "Microsoft YaHei", Arial, sans-serif;
+      margin: 20px;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      color: #333;
+    }
+    input[type="text"], input[type="file"] {
+      width: 300px;
+      padding: 8px;
+      font-size: 16px;
+      margin-bottom: 20px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background-color: #fff;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      font-size: 14px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    tr:nth-child(even){background-color: #f9f9f9;}
+    tr:hover {background-color: #f1f1f1;}
+  </style>
 </head>
 <body>
-    <div class="content" id="text-container"></div>
-    <script>
-        const text = "你好呀！";
-        const container = document.getElementById("text-container");
-        const delays = [0.15, 0.2, 0.3, 0.4, 0.5]; // 先慢后快的节奏，从左到右
+  <h1>滤芯模糊搜索页面</h1>
+  <!-- 上传文件控件 -->
+  <input type="file" id="uploadFile" accept=".xlsx">
+  <br>
+  <input type="text" id="searchBox" placeholder="输入关键词，试试你的型号、编码、适用车型……">
+  <div id="results"></div>
 
-        text.split("").forEach((char, index) => {
-            const span = document.createElement("span");
-            span.textContent = char;
-            span.classList.add("char");
-            span.style.animationDelay = `${delays[index] || 0.1}s`;
-            container.appendChild(span);
-        });
-    </script>
+  <!-- 引入 SheetJS 库 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+  <script>
+    // 默认数据（初始状态，可用上传文件替换）
+    var data = [
+      {"编码": "CS1001", "名称": "机油滤清器纸芯", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "1012012-E00-0000长效", "销售报价": "7.8", "适用车型": "一汽锡柴CA4DB1发动机", "装箱数": "75", "禁用标识": ""},
+      {"编码": "CS1003", "名称": "机油滤清器", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "JX0814 4100 1012D5-020 1012010-2-M JX0814B JX0816", "销售报价": "11", "适用车型": "主机配云内4100 云内4100 南充4110三顿轻卡 东风140 汽油141 142", "装箱数": "30", "禁用标识": ""},
+      {"编码": "CS1004", "名称": "机油滤清器", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "JX1010 1000622875", "销售报价": "13", "适用车型": "主机配云内490 扬柴4105 东风小卡 江淮 福田奥铃捷运", "装箱数": "30", "禁用标识": ""},
+      {"编码": "CS1005", "名称": "机油滤清器", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "JX0810D 1012010-X2", "销售报价": "10.5", "适用车型": "一汽大柴498 .小解放CA498.锡柴1012010-X2叉车 福田时代骑士", "装箱数": "40", "禁用标识": ""},
+      {"编码": "CS1006", "名称": "机油滤清器", "主计量单位": "只", "物品分类": "03011 大车", "规格型号": "JX0810D1", "销售报价": "10.5", "适用车型": "大柴498 东风 云内 新昌490 8", "装箱数": "40", "禁用标识": ""}
+    ];
+
+    // 渲染搜索结果到页面
+    function renderResults(results) {
+      if (results.length === 0) {
+        document.getElementById("results").innerHTML = "<p>呃，没有搜到相关结果哦～再试试其他关键词？</p>";
+        return;
+      }
+      var html = "<table><tr><th>编码</th><th>名称</th><th>主计量单位</th><th>物品分类</th><th>规格型号</th><th>销售报价</th><th>适用车型</th><th>装箱数</th><th>禁用标识</th></tr>";
+      results.forEach(function(item) {
+         html += "<tr>";
+         html += "<td>" + item["编码"] + "</td>";
+         html += "<td>" + item["名称"] + "</td>";
+         html += "<td>" + item["主计量单位"] + "</td>";
+         html += "<td>" + item["物品分类"] + "</td>";
+         html += "<td>" + item["规格型号"] + "</td>";
+         html += "<td>" + item["销售报价"] + "</td>";
+         html += "<td>" + item["适用车型"] + "</td>";
+         html += "<td>" + item["装箱数"] + "</td>";
+         html += "<td>" + item["禁用标识"] + "</td>";
+         html += "</tr>";
+      });
+      html += "</table>";
+      document.getElementById("results").innerHTML = html;
+    }
+
+    // 简单模糊搜索函数：遍历每条数据的所有字段，看看是否包含关键词（不区分大小写）
+    function fuzzySearch(query) {
+      query = query.toLowerCase();
+      return data.filter(function(item) {
+         return Object.values(item).some(function(value) {
+            if(value) {
+              return value.toString().toLowerCase().includes(query);
+            }
+            return false;
+         });
+      });
+    }
+
+    // 监听输入框变化，实时更新搜索结果
+    document.getElementById("searchBox").addEventListener("input", function() {
+      var query = this.value.trim();
+      if(query === "") {
+         renderResults(data);
+      } else {
+         var results = fuzzySearch(query);
+         renderResults(results);
+      }
+    });
+
+    // 文件上传后处理 xlsx 文件
+    document.getElementById('uploadFile').addEventListener('change', function(e) {
+      var file = e.target.files[0];
+      var reader = new FileReader();
+      reader.onload = function(e) {
+        var dataArray = new Uint8Array(e.target.result);
+        var workbook = XLSX.read(dataArray, {type: 'array'});
+        var firstSheet = workbook.SheetNames[0];
+        var worksheet = workbook.Sheets[firstSheet];
+        // 将工作表转换为 JSON 对象数组
+        var jsonData = XLSX.utils.sheet_to_json(worksheet);
+        // 替换全局数据并重新渲染搜索结果
+        data = jsonData;
+        renderResults(data);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    // 初始显示所有数据
+    renderResults(data);
+  </script>
 </body>
 </html>
