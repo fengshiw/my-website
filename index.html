@@ -2,23 +2,42 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>滤芯模糊搜索页面</title>
+  <title>滤芯模糊搜索（自动保存 + 拖拽上传）</title>
   <style>
     body {
-      font-family: "Microsoft YaHei", Arial, sans-serif;
+      font-family: "Microsoft YaHei", sans-serif;
       margin: 20px;
-      background-color: #f9f9f9;
+      background-color: #f7f9fa;
     }
     h1 {
       color: #333;
     }
-    input[type="text"], input[type="file"] {
+    #uploadZone {
+      border: 2px dashed #aaa;
+      padding: 40px;
+      text-align: center;
+      color: #888;
+      margin-bottom: 20px;
+      border-radius: 8px;
+      background: #fff;
+    }
+    #uploadZone.dragover {
+      border-color: #4CAF50;
+      background: #f0fff0;
+      color: #4CAF50;
+    }
+    input[type="text"] {
       width: 300px;
       padding: 8px;
       font-size: 16px;
-      margin-bottom: 20px;
+      margin-bottom: 10px;
       border: 1px solid #ccc;
       border-radius: 4px;
+    }
+    #count {
+      margin: 10px 0;
+      font-weight: bold;
+      color: #555;
     }
     table {
       border-collapse: collapse;
@@ -39,17 +58,22 @@
   </style>
 </head>
 <body>
-  <h1>滤芯模糊搜索页面</h1>
-  <input type="file" id="uploadFile" accept=".xlsx">
-  <br>
-  <input type="text" id="searchBox" placeholder="输入关键词，搜型号、编码、车型都行！">
+  <h1>滤芯模糊搜索系统 🛠️</h1>
+  <div id="uploadZone">拖拽 Excel 文件到这里上传 或点击选择上传：<br>
+    <input type="file" id="uploadFile" accept=".xlsx">
+  </div>
+
+  <input type="text" id="searchBox" placeholder="输入关键词搜型号、编码、车型、价格…">
+  <div id="count"></div>
   <div id="results"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
   <script>
     let data = [];
 
-    // 超级模糊搜索，去除所有特殊符号、空格、大小写
+    const LOCAL_KEY = "filterData";
+
+    // 封装超级模糊搜索
     function fuzzySearch(query) {
       const normalize = str => str.toString().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '');
       const cleanQuery = normalize(query);
@@ -60,10 +84,10 @@
       );
     }
 
-    // 渲染搜索结果
     function renderResults(results) {
+      document.getElementById("count").textContent = `共 ${results.length} 条结果`;
       if (results.length === 0) {
-        document.getElementById("results").innerHTML = "<p>没有搜到哎～你是不是输错了🙄</p>";
+        document.getElementById("results").innerHTML = "<p>啥也没搜到欸～换个词再来一次😤</p>";
         return;
       }
       let html = "<table><tr>";
@@ -79,33 +103,70 @@
       document.getElementById("results").innerHTML = html;
     }
 
-    // 监听输入框变化
-    document.getElementById("searchBox").addEventListener("input", function() {
-      const query = this.value.trim();
-      renderResults(query ? fuzzySearch(query) : data);
-    });
-
-    // 上传 xlsx 解析
-    document.getElementById("uploadFile").addEventListener("change", function(e) {
-      const file = e.target.files[0];
+    // 文件解析并保存
+    function handleFile(file) {
       const reader = new FileReader();
       reader.onload = function(e) {
         const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
         const sheet = workbook.SheetNames[0];
         const raw = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header: 1});
-        const headers = raw[1]; // 第二行是字段名
-        const rows = raw.slice(2); // 第三行开始是内容
-
+        const headers = raw[1];
+        const rows = raw.slice(2);
         data = rows.map(row => {
           let obj = {};
           headers.forEach((k, i) => obj[k] = row[i] || "");
           return obj;
         });
-
+        localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
         renderResults(data);
       };
       reader.readAsArrayBuffer(file);
+    }
+
+    // 拖拽上传区域
+    const dropZone = document.getElementById("uploadZone");
+    dropZone.addEventListener("dragover", e => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
     });
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+    dropZone.addEventListener("drop", e => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+      const file = e.dataTransfer.files[0];
+      if (file && file.name.endsWith(".xlsx")) {
+        handleFile(file);
+      } else {
+        alert("只能上传 .xlsx 文件哦！");
+      }
+    });
+
+    // 上传按钮
+    document.getElementById("uploadFile").addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (file) handleFile(file);
+    });
+
+    // 搜索框输入
+    document.getElementById("searchBox").addEventListener("input", function() {
+      const query = this.value.trim();
+      renderResults(query ? fuzzySearch(query) : data);
+    });
+
+    // 页面加载尝试读取本地存储
+    window.onload = () => {
+      const saved = localStorage.getItem(LOCAL_KEY);
+      if (saved) {
+        try {
+          data = JSON.parse(saved);
+          renderResults(data);
+        } catch (e) {
+          console.error("数据读取失败：", e);
+        }
+      }
+    };
   </script>
 </body>
 </html>
