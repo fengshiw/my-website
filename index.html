@@ -10,8 +10,9 @@
     .upload-zone { border: 2px dashed #aaa; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
     .upload-zone.dragover { border-color: #4CAF50; background: #f0fff0; color: #4CAF50; }
     .file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
-    .file-row input[type="text"] { padding: 4px; }
+    .file-name { cursor: pointer; border-bottom: 1px dashed #666; }
     .file-row button, .file-row input[type="checkbox"] { padding: 4px 10px; }
+    .file-actions { margin-left: auto; display: flex; gap: 10px; align-items: center; }
     #searchBox { width: 60%; display: block; margin: 20px auto; padding: 10px; font-size: 16px; }
     #count { text-align: center; font-weight: bold; margin-bottom: 10px; }
     table { border-collapse: collapse; width: 100%; background: #fff; }
@@ -24,7 +25,7 @@
 <body>
 <header>滤芯搜索系统</header>
 <div class="container">
-  <div class="upload-zone" id="uploadZone">上传主文件（支持任意格式）或 <input type="file" id="uploadFile" multiple></div>
+  <div class="upload-zone" id="uploadZone">上传主文件或 <input type="file" id="uploadFile" multiple></div>
   <div id="mainFileList"></div>
   <div class="upload-zone" id="stockZone">上传库存文件（支持多个）或 <input type="file" id="stockFile" multiple></div>
   <div id="stockFileList"></div>
@@ -36,7 +37,20 @@
 <script>
 let mainFiles = {}, stockFiles = {};
 const $ = id => document.getElementById(id);
-const norm = s => s.toString().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, "");
+const norm = s => s.toString().toLowerCase().replace(/[^a-z0-9一-龥]/g, "");
+
+function saveFilesToStorage() {
+  localStorage.setItem('mainFiles', JSON.stringify(mainFiles));
+  localStorage.setItem('stockFiles', JSON.stringify(stockFiles));
+}
+
+function loadFilesFromStorage() {
+  const m = localStorage.getItem('mainFiles'), s = localStorage.getItem('stockFiles');
+  if (m) mainFiles = JSON.parse(m);
+  if (s) stockFiles = JSON.parse(s);
+  renderFileList("mainFileList", mainFiles);
+  renderFileList("stockFileList", stockFiles, true);
+}
 
 function parseExcel(file, cb) {
   const r = new FileReader();
@@ -50,112 +64,109 @@ function parseExcel(file, cb) {
   r.readAsArrayBuffer(file);
 }
 
-function renderFileList(containerId, files, isStock = false) {
-  const container = $(containerId);
-  container.innerHTML = "";
+function renderFileList(id, files, isStock = false) {
+  const box = $(id);
+  box.innerHTML = "";
   Object.entries(files).forEach(([name, rows]) => {
-    const id = name.replace(/\\W/g, "_");
-    const row = document.createElement("div");
-    row.className = "file-row";
-    row.innerHTML = `
-      <label>${name}（${rows.length}条）</label>
-      ${!isStock ? `<input type="checkbox" id="check_${id}" checked>` : ""}
-      <input type="text" id="rename_${id}" placeholder="新名称">
-      <button onclick="rename('${name}','${id}','${containerId}')">重命名</button>
-      <button onclick="exportFile('${name}','${containerId}')">导出</button>
-      <button onclick="deleteFile('${name}','${containerId}')">删除</button>`;
-    container.appendChild(row);
+    const html = `
+      <div class="file-row">
+        <span class="file-name" contenteditable="true" onblur="renameDirect(this,'${name}','${id}')">${name}</span>
+        ${!isStock ? `<input type="checkbox" id="check_${name.replace(/\W/g, "_")}" checked>` : ""}
+        <div class="file-actions">
+          <button onclick="exportFile('${name}','${id}')">导出</button>
+          <button onclick="deleteFile('${name}','${id}')">删除</button>
+        </div>
+      </div>`;
+    box.insertAdjacentHTML("beforeend", html);
   });
 }
 
-function rename(name, id, type) {
-  const newName = $(`rename_${id}`).value.trim();
-  if (!newName) return;
-  const files = type === "mainFileList" ? mainFiles : stockFiles;
+function renameDirect(el, oldName, id) {
+  const newName = el.innerText.trim();
+  if (!newName || newName === oldName) return;
+  const files = id === "mainFileList" ? mainFiles : stockFiles;
   if (files[newName]) return alert("已有同名文件");
-  files[newName] = files[name]; delete files[name];
-  renderFileList(type, files, type === "stockFileList");
+  files[newName] = files[oldName];
+  delete files[oldName];
+  saveFilesToStorage();
+  renderFileList(id, files, id === "stockFileList");
 }
 
-function exportFile(name, type) {
-  const data = (type === "mainFileList" ? mainFiles : stockFiles)[name];
+function exportFile(name, id) {
+  const data = (id === "mainFileList" ? mainFiles : stockFiles)[name];
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
   XLSX.writeFile(wb, name + ".xlsx");
 }
 
-function deleteFile(name, type) {
-  const files = type === "mainFileList" ? mainFiles : stockFiles;
+function deleteFile(name, id) {
+  const files = id === "mainFileList" ? mainFiles : stockFiles;
   delete files[name];
-  renderFileList(type, files, type === "stockFileList");
+  saveFilesToStorage();
+  renderFileList(id, files, id === "stockFileList");
 }
 
 $("uploadFile").onchange = e => {
   [...e.target.files].forEach(f => {
-    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
-      parseExcel(f, (n, d) => { mainFiles[n] = d; renderFileList("mainFileList", mainFiles); });
-    } else {
-      mainFiles[f.name] = []; renderFileList("mainFileList", mainFiles);
-    }
-  });
-};
-$("stockFile").onchange = e => {
-  [...e.target.files].forEach(f => {
-    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
-      parseExcel(f, (n, d) => { stockFiles[n] = d; renderFileList("stockFileList", stockFiles, true); });
-    }
+    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx"))
+      parseExcel(f, (n, d) => { mainFiles[n] = d; saveFilesToStorage(); renderFileList("mainFileList", mainFiles); });
   });
 };
 
-$("uploadZone").ondragover = e => (e.preventDefault(), e.currentTarget.classList.add("dragover"));
-$("uploadZone").ondragleave = e => e.currentTarget.classList.remove("dragover");
-$("uploadZone").ondrop = e => {
-  e.preventDefault(); e.currentTarget.classList.remove("dragover");
-  [...e.dataTransfer.files].forEach(f => {
-    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
-      parseExcel(f, (n, d) => { mainFiles[n] = d; renderFileList("mainFileList", mainFiles); });
-    } else {
-      mainFiles[f.name] = []; renderFileList("mainFileList", mainFiles);
-    }
+$("stockFile").onchange = e => {
+  [...e.target.files].forEach(f => {
+    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx"))
+      parseExcel(f, (n, d) => { stockFiles[n] = d; saveFilesToStorage(); renderFileList("stockFileList", stockFiles, true); });
   });
 };
-$("stockZone").ondragover = e => (e.preventDefault(), e.currentTarget.classList.add("dragover"));
-$("stockZone").ondragleave = e => e.currentTarget.classList.remove("dragover");
-$("stockZone").ondrop = e => {
-  e.preventDefault(); e.currentTarget.classList.remove("dragover");
-  [...e.dataTransfer.files].forEach(f => {
-    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
-      parseExcel(f, (n, d) => { stockFiles[n] = d; renderFileList("stockFileList", stockFiles, true); });
-    }
-  });
-};
+
+["uploadZone", "stockZone"].forEach(id => {
+  const isStock = id === "stockZone";
+  $(id).ondragover = e => (e.preventDefault(), e.currentTarget.classList.add("dragover"));
+  $(id).ondragleave = e => e.currentTarget.classList.remove("dragover");
+  $(id).ondrop = e => {
+    e.preventDefault(); e.currentTarget.classList.remove("dragover");
+    [...e.dataTransfer.files].forEach(f => {
+      if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
+        parseExcel(f, (n, d) => {
+          const target = isStock ? stockFiles : mainFiles;
+          target[n] = d;
+          saveFilesToStorage();
+          renderFileList(isStock ? "stockFileList" : "mainFileList", target, isStock);
+        });
+      }
+    });
+  };
+});
 
 $("searchBox").oninput = e => {
   const q = norm(e.target.value.trim());
-  const activeFiles = Object.entries(mainFiles).filter(([n]) => $(`check_${n.replace(/\\W/g,"_")}`)?.checked);
-  let result = [];
-  activeFiles.forEach(([name, rows]) => {
-    rows.forEach(row => {
-      if (Object.values(row).some(v => norm(v).includes(q))) {
-        result.push({...row, 来源文件: name});
+  if (!q) return $("results").innerHTML = $("count").textContent = "";
+  const result = [];
+  const stockSet = new Set(Object.values(stockFiles).flat().map(r => norm(Object.values(r)[0])));
+  Object.entries(mainFiles).forEach(([n, rows]) => {
+    if (!$(`check_${n.replace(/\W/g,"_")}`)?.checked) return;
+    rows.forEach(r => {
+      if (Object.values(r).some(v => norm(v).includes(q))) {
+        const row = {...r};
+        row["库存"] = stockSet.has(norm(Object.values(r)[0])) ? "✅" : "❌";
+        result.push(row);
       }
     });
   });
-  const stockSet = new Set(Object.values(stockFiles).flat().map(r => norm(Object.values(r)[0])));
-  result = result.map(r => ({
-    ...r,
-    库存状态: stockSet.has(norm(Object.values(r)[0])) ? "✅有库存" : "❌无库存"
-  }));
   $("count").textContent = `共 ${result.length} 条`;
   $("results").innerHTML = result.length ? render(result) : "";
 };
 
 function render(data) {
   const keys = Object.keys(data[0] || {});
-  let html = "<table><tr>" + keys.map(k => `<th>${k}</th>`).join("") + "</tr>";
+  const rename = k => k === "主计量单位" ? "单位" : k === "销售报价" ? "价格" : k === "物品分类" ? "分类" : k;
+  let html = "<table><tr>" + keys.map(k => `<th>${rename(k)}</th>`).join("") + "</tr>";
   return html + data.map(r => "<tr>" + keys.map(k => `<td>${r[k]||""}</td>`).join("") + "</tr>").join("") + "</table>";
 }
+
+loadFilesFromStorage();
 </script>
 </body>
 </html>
