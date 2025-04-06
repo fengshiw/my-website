@@ -1,171 +1,280 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh">
 <head>
-  <meta charset="utf-8">
-  <title>滤芯模糊搜索（自动保存 + 拖拽上传）</title>
+  <meta charset="UTF-8" />
+  <title>滤芯搜索系统</title>
   <style>
     body {
       font-family: "Microsoft YaHei", sans-serif;
       margin: 20px;
-      background-color: #f7f9fa;
+      background-color: #f5f5f5;
     }
     h1 {
       color: #333;
     }
     #uploadZone {
-      border: 2px dashed #aaa;
-      padding: 40px;
+      border: 2px dashed #ccc;
+      padding: 30px;
       text-align: center;
       color: #888;
-      margin-bottom: 20px;
       border-radius: 8px;
+      margin-bottom: 20px;
       background: #fff;
     }
     #uploadZone.dragover {
       border-color: #4CAF50;
       background: #f0fff0;
-      color: #4CAF50;
     }
     input[type="text"] {
       width: 300px;
       padding: 8px;
-      font-size: 16px;
       margin-bottom: 10px;
-      border: 1px solid #ccc;
-      border-radius: 4px;
+      font-size: 16px;
     }
     #count {
-      margin: 10px 0;
       font-weight: bold;
-      color: #555;
+      margin: 10px 0;
     }
-    table {
-      border-collapse: collapse;
+    #results table {
       width: 100%;
+      border-collapse: collapse;
       background-color: #fff;
     }
-    th, td {
+    #results th, #results td {
       border: 1px solid #ddd;
       padding: 8px;
       font-size: 14px;
-      text-align: left;
     }
-    th {
+    #results th {
       background-color: #f2f2f2;
     }
-    tr:nth-child(even){background-color: #f9f9f9;}
-    tr:hover {background-color: #f1f1f1;}
+    tr:hover { background: #f9f9f9; }
+
+    #fileManagerToggle {
+      margin: 10px 0;
+      padding: 6px 12px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    #fileManager {
+      display: none;
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      margin-bottom: 20px;
+    }
+
+    .file-entry {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin: 5px 0;
+      padding: 5px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .file-entry span {
+      flex-grow: 1;
+    }
+
+    .file-entry button {
+      margin-left: 5px;
+    }
   </style>
 </head>
 <body>
-  <h1>滤芯模糊搜索系统 🛠️</h1>
-  <div id="uploadZone">拖拽 Excel 文件到这里上传 或点击选择上传：<br>
-    <input type="file" id="uploadFile" accept=".xlsx">
+  <h1>滤芯模糊搜索系统 ✨</h1>
+
+  <div id="uploadZone">拖拽 Excel 到此上传 或 选择文件：
+    <input type="file" id="uploadFile" accept=".xlsx" />
   </div>
 
-  <input type="text" id="searchBox" placeholder="输入关键词搜型号、编码、车型、价格…">
+  <button id="fileManagerToggle">管理文件</button>
+  <div id="fileManager"></div>
+
+  <input type="text" id="searchBox" placeholder="输入关键词模糊搜索…" />
   <div id="count"></div>
   <div id="results"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
   <script>
-    let data = [];
+    const uploadZone = document.getElementById("uploadZone");
+    const fileInput = document.getElementById("uploadFile");
+    const fileManager = document.getElementById("fileManager");
+    const fileManagerToggle = document.getElementById("fileManagerToggle");
 
-    const LOCAL_KEY = "filterData";
+    let currentFile = null;
+    let allData = {};
 
-    // 封装超级模糊搜索
-    function fuzzySearch(query) {
-      const normalize = str => str.toString().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '');
-      const cleanQuery = normalize(query);
-      return data.filter(item =>
-        Object.values(item).some(v =>
-          v && normalize(v).includes(cleanQuery)
-        )
-      );
+    const normalize = str => str.toString().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '');
+
+    function saveAll() {
+      localStorage.setItem("filterFiles", JSON.stringify(allData));
+    }
+
+    function loadAll() {
+      const saved = localStorage.getItem("filterFiles");
+      if (saved) {
+        allData = JSON.parse(saved);
+      }
+    }
+
+    function renderFileManager() {
+      fileManager.innerHTML = "";
+      if (Object.keys(allData).length === 0) {
+        fileManager.innerHTML = "<p>暂无文件</p>";
+        return;
+      }
+
+      Object.keys(allData).forEach(name => {
+        const div = document.createElement("div");
+        div.className = "file-entry";
+
+        const span = document.createElement("span");
+        span.textContent = name;
+
+        const btnLoad = document.createElement("button");
+        btnLoad.textContent = "加载";
+        btnLoad.onclick = () => {
+          currentFile = name;
+          renderResults(allData[name]);
+        };
+
+        const btnRename = document.createElement("button");
+        btnRename.textContent = "重命名";
+        btnRename.onclick = () => {
+          const newName = prompt("输入新名称：", name);
+          if (newName && !allData[newName]) {
+            allData[newName] = allData[name];
+            delete allData[name];
+            if (currentFile === name) currentFile = newName;
+            saveAll();
+            renderFileManager();
+          }
+        };
+
+        const btnExport = document.createElement("button");
+        btnExport.textContent = "导出";
+        btnExport.onclick = () => {
+          const ws = XLSX.utils.json_to_sheet(allData[name]);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+          XLSX.writeFile(wb, name + ".xlsx");
+        };
+
+        const btnDelete = document.createElement("button");
+        btnDelete.textContent = "清除";
+        btnDelete.onclick = () => {
+          if (confirm("确定删除？")) {
+            delete allData[name];
+            if (currentFile === name) {
+              currentFile = null;
+              renderResults([]);
+            }
+            saveAll();
+            renderFileManager();
+          }
+        };
+
+        div.appendChild(span);
+        div.appendChild(btnLoad);
+        div.appendChild(btnRename);
+        div.appendChild(btnExport);
+        div.appendChild(btnDelete);
+        fileManager.appendChild(div);
+      });
     }
 
     function renderResults(results) {
-      document.getElementById("count").textContent = `共 ${results.length} 条结果`;
-      if (results.length === 0) {
-        document.getElementById("results").innerHTML = "<p>啥也没搜到欸～换个词再来一次😤</p>";
+      document.getElementById("count").textContent = `共 ${results.length} 条`;
+      if (!results || results.length === 0) {
+        document.getElementById("results").innerHTML = "<p>没有结果</p>";
         return;
       }
       let html = "<table><tr>";
       const keys = Object.keys(results[0]);
       keys.forEach(k => html += `<th>${k}</th>`);
       html += "</tr>";
-      results.forEach(item => {
+      results.forEach(row => {
         html += "<tr>";
-        keys.forEach(k => html += `<td>${item[k] || ""}</td>`);
+        keys.forEach(k => html += `<td>${row[k] || ""}</td>`);
         html += "</tr>";
       });
       html += "</table>";
       document.getElementById("results").innerHTML = html;
     }
 
-    // 文件解析并保存
+    function fuzzySearch(query) {
+      const clean = normalize(query);
+      return allData[currentFile].filter(row =>
+        Object.values(row).some(v => v && normalize(v).includes(clean))
+      );
+    }
+
+    document.getElementById("searchBox").addEventListener("input", function () {
+      const query = this.value.trim();
+      if (currentFile && allData[currentFile]) {
+        renderResults(query ? fuzzySearch(query) : allData[currentFile]);
+      }
+    });
+
     function handleFile(file) {
       const reader = new FileReader();
-      reader.onload = function(e) {
-        const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
-        const sheet = workbook.SheetNames[0];
-        const raw = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header: 1});
+      reader.onload = function (e) {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const sheet = wb.SheetNames[0];
+        const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1 });
         const headers = raw[1];
         const rows = raw.slice(2);
-        data = rows.map(row => {
-          let obj = {};
-          headers.forEach((k, i) => obj[k] = row[i] || "");
+        const parsed = rows.map(row => {
+          const obj = {};
+          headers.forEach((h, i) => obj[h] = row[i] || "");
           return obj;
         });
-        localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
-        renderResults(data);
+
+        let name = prompt("输入文件名称：", file.name.replace(".xlsx", ""));
+        while (!name || allData[name]) {
+          name = prompt("名称重复或无效，请重新输入：");
+        }
+        allData[name] = parsed;
+        currentFile = name;
+        saveAll();
+        renderFileManager();
+        renderResults(parsed);
       };
       reader.readAsArrayBuffer(file);
     }
 
-    // 拖拽上传区域
-    const dropZone = document.getElementById("uploadZone");
-    dropZone.addEventListener("dragover", e => {
+    uploadZone.addEventListener("dragover", e => {
       e.preventDefault();
-      dropZone.classList.add("dragover");
+      uploadZone.classList.add("dragover");
     });
-    dropZone.addEventListener("dragleave", () => {
-      dropZone.classList.remove("dragover");
+    uploadZone.addEventListener("dragleave", () => {
+      uploadZone.classList.remove("dragover");
     });
-    dropZone.addEventListener("drop", e => {
+    uploadZone.addEventListener("drop", e => {
       e.preventDefault();
-      dropZone.classList.remove("dragover");
+      uploadZone.classList.remove("dragover");
       const file = e.dataTransfer.files[0];
       if (file && file.name.endsWith(".xlsx")) {
         handleFile(file);
-      } else {
-        alert("只能上传 .xlsx 文件哦！");
       }
     });
 
-    // 上传按钮
-    document.getElementById("uploadFile").addEventListener("change", e => {
+    fileInput.addEventListener("change", e => {
       const file = e.target.files[0];
       if (file) handleFile(file);
     });
 
-    // 搜索框输入
-    document.getElementById("searchBox").addEventListener("input", function() {
-      const query = this.value.trim();
-      renderResults(query ? fuzzySearch(query) : data);
+    fileManagerToggle.addEventListener("click", () => {
+      fileManager.style.display = fileManager.style.display === "none" ? "block" : "none";
+      fileManagerToggle.textContent = fileManager.style.display === "none" ? "管理文件" : "关闭管理";
     });
 
-    // 页面加载尝试读取本地存储
     window.onload = () => {
-      const saved = localStorage.getItem(LOCAL_KEY);
-      if (saved) {
-        try {
-          data = JSON.parse(saved);
-          renderResults(data);
-        } catch (e) {
-          console.error("数据读取失败：", e);
-        }
-      }
+      loadAll();
+      renderFileManager();
     };
   </script>
 </body>
