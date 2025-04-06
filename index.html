@@ -2,149 +2,160 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <title>滤芯管理</title>
+  <title>滤芯搜索系统</title>
   <style>
     body { font-family: sans-serif; margin: 0; background: #f4f6f8; }
-    header { background: #2c3e50; color: white; padding: 20px; text-align: center; }
-    .container { max-width: 960px; margin: 30px auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    #fileManagerToggle { margin: 0 auto 10px; display: block; padding: 8px 16px; background: #4caf50; color: white; border: none; border-radius: 5px; cursor: pointer; }
-    #fileManager { max-height: 0; overflow: hidden; transition: all 0.4s ease; opacity: 0; margin-bottom: 20px; }
-    #fileManager.open { max-height: 1000px; opacity: 1; }
-    .file-row { display: flex; align-items: center; margin-bottom: 10px; }
-    .file-name { flex-grow: 1; font-weight: bold; }
-    .file-row input { margin-left: 10px; padding: 4px; }
-    .file-row button { margin-left: 6px; padding: 5px 10px; border: none; border-radius: 3px; cursor: pointer; }
-    .load-btn { background: #2196f3; color: #fff; }
-    .export-btn { background: #9c27b0; color: #fff; }
-    .rename-btn { background: #ff9800; color: #fff; }
-    .delete-btn { background: #f44336; color: #fff; }
-    #uploadZone { border: 2px dashed #aaa; padding: 40px; text-align: center; color: #888; margin-bottom: 20px; border-radius: 8px; }
-    #uploadZone.dragover { border-color: #4CAF50; background: #f0fff0; color: #4CAF50; }
-    #searchBox { display: block; margin: 0 auto 10px; padding: 10px; font-size: 16px; width: 60%; border-radius: 5px; border: 1px solid #ccc; }
+    header { background: #2c3e50; color: white; padding: 20px; text-align: center; font-size: 20px; }
+    .container { max-width: 1000px; margin: 30px auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .upload-zone { border: 2px dashed #aaa; padding: 20px; text-align: center; margin: 20px 0; border-radius: 8px; }
+    .upload-zone.dragover { border-color: #4CAF50; background: #f0fff0; color: #4CAF50; }
+    .file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; }
+    .file-row input[type="text"] { padding: 4px; }
+    .file-row button, .file-row input[type="checkbox"] { padding: 4px 10px; }
+    #searchBox { width: 60%; display: block; margin: 20px auto; padding: 10px; font-size: 16px; }
     #count { text-align: center; font-weight: bold; margin-bottom: 10px; }
-    table { border-collapse: collapse; width: 100%; background-color: #fff; }
-    th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; text-align: left; }
-    th { background-color: #f2f2f2; }
-    tr:nth-child(even){background-color: #f9f9f9;}
-    tr:hover {background-color: #f1f1f1;}
+    table { border-collapse: collapse; width: 100%; background: #fff; }
+    th, td { border: 1px solid #ddd; padding: 6px; font-size: 14px; text-align: left; }
+    th { background-color: #eee; }
+    tr:nth-child(even) { background-color: #f9f9f9; }
+    tr:hover { background-color: #f1f1f1; }
   </style>
 </head>
 <body>
-  <header>滤芯数据管理系统<div id="currentFile">当前文件：未选择</div></header>
-  <div class="container">
-    <button id="fileManagerToggle">📁 管理文件</button>
-    <div id="fileManager"></div>
-    <div id="uploadZone">拖拽 Excel 文件上传 或 <input type="file" id="uploadFile" accept=".xlsx"></div>
-    <input type="text" id="searchBox" placeholder="搜索...">
-    <div id="count"></div>
-    <div id="results"></div>
-  </div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
-  <script>
-    let data = [], currentKey = "", PREFIX = "xlsx_";
-    const $ = id => document.getElementById(id);
-    const norm = str => str.toString().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '');
-    function fuzzySearch(q) {
-      const clean = norm(q);
-      return data.filter(item => Object.values(item).some(v => v && norm(v).includes(clean)));
+<header>滤芯搜索系统</header>
+<div class="container">
+  <div class="upload-zone" id="uploadZone">上传主文件（支持任意格式）或 <input type="file" id="uploadFile" multiple></div>
+  <div id="mainFileList"></div>
+  <div class="upload-zone" id="stockZone">上传库存文件（支持多个）或 <input type="file" id="stockFile" multiple></div>
+  <div id="stockFileList"></div>
+  <input type="text" id="searchBox" placeholder="输入关键词搜索...">
+  <div id="count"></div>
+  <div id="results"></div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+<script>
+let mainFiles = {}, stockFiles = {};
+const $ = id => document.getElementById(id);
+const norm = s => s.toString().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/g, "");
+
+function parseExcel(file, cb) {
+  const r = new FileReader();
+  r.onload = e => {
+    const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+    const raw = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: 1});
+    const head = raw[1], rows = raw.slice(2);
+    const data = rows.map(r => Object.fromEntries(head.map((h, i) => [h, r[i] || ""])));
+    cb(file.name, data);
+  };
+  r.readAsArrayBuffer(file);
+}
+
+function renderFileList(containerId, files, isStock = false) {
+  const container = $(containerId);
+  container.innerHTML = "";
+  Object.entries(files).forEach(([name, rows]) => {
+    const id = name.replace(/\\W/g, "_");
+    const row = document.createElement("div");
+    row.className = "file-row";
+    row.innerHTML = `
+      <label>${name}（${rows.length}条）</label>
+      ${!isStock ? `<input type="checkbox" id="check_${id}" checked>` : ""}
+      <input type="text" id="rename_${id}" placeholder="新名称">
+      <button onclick="rename('${name}','${id}','${containerId}')">重命名</button>
+      <button onclick="exportFile('${name}','${containerId}')">导出</button>
+      <button onclick="deleteFile('${name}','${containerId}')">删除</button>`;
+    container.appendChild(row);
+  });
+}
+
+function rename(name, id, type) {
+  const newName = $(`rename_${id}`).value.trim();
+  if (!newName) return;
+  const files = type === "mainFileList" ? mainFiles : stockFiles;
+  if (files[newName]) return alert("已有同名文件");
+  files[newName] = files[name]; delete files[name];
+  renderFileList(type, files, type === "stockFileList");
+}
+
+function exportFile(name, type) {
+  const data = (type === "mainFileList" ? mainFiles : stockFiles)[name];
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+  XLSX.writeFile(wb, name + ".xlsx");
+}
+
+function deleteFile(name, type) {
+  const files = type === "mainFileList" ? mainFiles : stockFiles;
+  delete files[name];
+  renderFileList(type, files, type === "stockFileList");
+}
+
+$("uploadFile").onchange = e => {
+  [...e.target.files].forEach(f => {
+    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
+      parseExcel(f, (n, d) => { mainFiles[n] = d; renderFileList("mainFileList", mainFiles); });
+    } else {
+      mainFiles[f.name] = []; renderFileList("mainFileList", mainFiles);
     }
-    function renderTable(results) {
-      const keys = Object.keys(results[0] || {});
-      let html = "<table><tr>" + keys.map(k => `<th>${k}</th>`).join("") + "</tr>";
-      return html + results.map(row => "<tr>" + keys.map(k => `<td>${row[k]||""}</td>`).join("") + "</tr>").join("") + "</table>";
+  });
+};
+$("stockFile").onchange = e => {
+  [...e.target.files].forEach(f => {
+    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
+      parseExcel(f, (n, d) => { stockFiles[n] = d; renderFileList("stockFileList", stockFiles, true); });
     }
-    function renderResults(res) {
-      $("count").textContent = res.length ? `共 ${res.length} 条` : "";
-      $("results").innerHTML = res.length ? renderTable(res) : "";
+  });
+};
+
+$("uploadZone").ondragover = e => (e.preventDefault(), e.currentTarget.classList.add("dragover"));
+$("uploadZone").ondragleave = e => e.currentTarget.classList.remove("dragover");
+$("uploadZone").ondrop = e => {
+  e.preventDefault(); e.currentTarget.classList.remove("dragover");
+  [...e.dataTransfer.files].forEach(f => {
+    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
+      parseExcel(f, (n, d) => { mainFiles[n] = d; renderFileList("mainFileList", mainFiles); });
+    } else {
+      mainFiles[f.name] = []; renderFileList("mainFileList", mainFiles);
     }
-    function saveFile(name, content) { localStorage.setItem(PREFIX + name, JSON.stringify(content)); }
-    function loadFile(name) {
-      const raw = localStorage.getItem(PREFIX + name); if (!raw) return;
-      data = JSON.parse(raw); currentKey = name;
-      $("currentFile").textContent = "当前文件：" + name;
-      renderResults([]);
+  });
+};
+$("stockZone").ondragover = e => (e.preventDefault(), e.currentTarget.classList.add("dragover"));
+$("stockZone").ondragleave = e => e.currentTarget.classList.remove("dragover");
+$("stockZone").ondrop = e => {
+  e.preventDefault(); e.currentTarget.classList.remove("dragover");
+  [...e.dataTransfer.files].forEach(f => {
+    if (f.name.endsWith(".xls") || f.name.endsWith(".xlsx")) {
+      parseExcel(f, (n, d) => { stockFiles[n] = d; renderFileList("stockFileList", stockFiles, true); });
     }
-    function updateFileManager() {
-      const list = $("fileManager"); list.innerHTML = "";
-      Object.keys(localStorage).filter(k => k.startsWith(PREFIX)).forEach(k => {
-        const name = k.slice(PREFIX.length), rows = JSON.parse(localStorage[k]);
-        const row = document.createElement("div");
-        row.className = "file-row";
-        row.innerHTML = `<span class="file-name">${name}（${rows.length}条）</span>
-          <input placeholder="新名称">
-          <button class="load-btn">加载</button>
-          <button class="export-btn">导出</button>
-          <button class="rename-btn">重命名</button>
-          <button class="delete-btn">删除</button>`;
-        const [input, load, exp, ren, del] = row.querySelectorAll("input,button");
-        load.onclick = () => loadFile(name);
-        exp.onclick = () => {
-          const ws = XLSX.utils.json_to_sheet(data);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-          XLSX.writeFile(wb, `${name}.xlsx`);
-        };
-        ren.onclick = () => {
-          const newName = input.value.trim();
-          if (!newName) return;
-          localStorage.setItem(PREFIX + newName, localStorage[k]);
-          localStorage.removeItem(k);
-          if (currentKey === name) currentKey = newName;
-          $("currentFile").textContent = "当前文件：" + currentKey;
-          updateFileManager();
-        };
-        del.onclick = () => {
-          localStorage.removeItem(k);
-          if (currentKey === name) {
-            data = []; currentKey = "";
-            $("results").innerHTML = ""; $("currentFile").textContent = "当前文件：未选择";
-          }
-          updateFileManager();
-        };
-        list.appendChild(row);
-      });
-    }
-    $("searchBox").oninput = e => {
-      const q = e.target.value.trim();
-      renderResults(q ? fuzzySearch(q) : []);
-    };
-    $("uploadFile").onchange = e => handleFile(e.target.files[0]);
-    $("uploadZone").ondragover = e => (e.preventDefault(), $("uploadZone").classList.add("dragover"));
-    $("uploadZone").ondragleave = () => $("uploadZone").classList.remove("dragover");
-    $("uploadZone").ondrop = e => {
-      e.preventDefault(); $("uploadZone").classList.remove("dragover");
-      const f = e.dataTransfer.files[0]; if (f && f.name.endsWith(".xlsx")) handleFile(f);
-    };
-    function handleFile(file) {
-      const reader = new FileReader();
-      reader.onload = e => {
-        const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
-        const sheet = wb.Sheets[wb.SheetNames[0]];
-        const raw = XLSX.utils.sheet_to_json(sheet, {header: 1});
-        const head = raw[1], rows = raw.slice(2);
-        data = rows.map(r => Object.fromEntries(head.map((h, i) => [h, r[i] || ""])));
-        const name = file.name.replace(".xlsx", "");
-        saveFile(name, data);
-        currentKey = name;
-        $("currentFile").textContent = "当前文件：" + name;
-        renderResults([]);
-        updateFileManager();
-      };
-      reader.readAsArrayBuffer(file);
-    }
-    $("fileManagerToggle").onclick = () => {
-      $("fileManager").classList.toggle("open");
-      updateFileManager();
-    };
-    window.onload = () => {
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k.startsWith(PREFIX)) {
-          const name = k.slice(PREFIX.length);
-          if (loadFile(name)) break;
-        }
+  });
+};
+
+$("searchBox").oninput = e => {
+  const q = norm(e.target.value.trim());
+  const activeFiles = Object.entries(mainFiles).filter(([n]) => $(`check_${n.replace(/\\W/g,"_")}`)?.checked);
+  let result = [];
+  activeFiles.forEach(([name, rows]) => {
+    rows.forEach(row => {
+      if (Object.values(row).some(v => norm(v).includes(q))) {
+        result.push({...row, 来源文件: name});
       }
-    };
-  </script>
+    });
+  });
+  const stockSet = new Set(Object.values(stockFiles).flat().map(r => norm(Object.values(r)[0])));
+  result = result.map(r => ({
+    ...r,
+    库存状态: stockSet.has(norm(Object.values(r)[0])) ? "✅有库存" : "❌无库存"
+  }));
+  $("count").textContent = `共 ${result.length} 条`;
+  $("results").innerHTML = result.length ? render(result) : "";
+};
+
+function render(data) {
+  const keys = Object.keys(data[0] || {});
+  let html = "<table><tr>" + keys.map(k => `<th>${k}</th>`).join("") + "</tr>";
+  return html + data.map(r => "<tr>" + keys.map(k => `<td>${r[k]||""}</td>`).join("") + "</tr>").join("") + "</table>";
+}
+</script>
 </body>
 </html>
