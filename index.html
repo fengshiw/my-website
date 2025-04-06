@@ -2,194 +2,172 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8" />
-  <title>滤芯搜索系统</title>
+  <title>滤芯数据管理系统 💼</title>
   <style>
     body {
       font-family: "Microsoft YaHei", sans-serif;
-      margin: 20px;
-      background-color: #f5f5f5;
+      margin: 0;
+      padding: 0;
+      background-color: #f4f6f8;
     }
-    h1 {
-      color: #333;
-    }
-    #uploadZone {
-      border: 2px dashed #ccc;
-      padding: 30px;
+    header {
+      background-color: #2c3e50;
+      padding: 20px;
+      color: white;
       text-align: center;
-      color: #888;
-      border-radius: 8px;
-      margin-bottom: 20px;
-      background: #fff;
+      font-size: 24px;
     }
-    #uploadZone.dragover {
-      border-color: #4CAF50;
-      background: #f0fff0;
-    }
-    input[type="text"] {
-      width: 300px;
-      padding: 8px;
-      margin-bottom: 10px;
-      font-size: 16px;
-    }
-    #count {
-      font-weight: bold;
-      margin: 10px 0;
-    }
-    #results table {
-      width: 100%;
-      border-collapse: collapse;
-      background-color: #fff;
-    }
-    #results th, #results td {
-      border: 1px solid #ddd;
-      padding: 8px;
+    #currentFile {
       font-size: 14px;
+      margin-top: 5px;
+      color: #ccc;
     }
-    #results th {
-      background-color: #f2f2f2;
+
+    .container {
+      max-width: 960px;
+      margin: 30px auto;
+      padding: 20px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
-    tr:hover { background: #f9f9f9; }
 
     #fileManagerToggle {
-      margin: 10px 0;
-      padding: 6px 12px;
-      font-size: 14px;
+      display: block;
+      margin: 0 auto 10px;
+      padding: 8px 16px;
+      background-color: #4caf50;
+      color: white;
+      border: none;
+      border-radius: 5px;
       cursor: pointer;
     }
 
     #fileManager {
-      display: none;
-      background: #fff;
-      padding: 10px;
-      border: 1px solid #ccc;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-in-out, opacity 0.3s ease-in-out;
+      opacity: 0;
       margin-bottom: 20px;
     }
 
-    .file-entry {
+    #fileManager.open {
+      max-height: 500px;
+      opacity: 1;
+    }
+
+    .file-row {
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      margin: 5px 0;
-      padding: 5px;
-      border-bottom: 1px solid #eee;
+      margin-bottom: 10px;
     }
-
-    .file-entry span {
+    .file-name {
       flex-grow: 1;
+      font-weight: bold;
+    }
+    .file-row input {
+      margin-left: 10px;
+      padding: 4px;
+    }
+    .file-row button {
+      margin-left: 6px;
+      padding: 5px 10px;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .load-btn { background: #2196f3; color: #fff; }
+    .export-btn { background: #9c27b0; color: #fff; }
+    .rename-btn { background: #ff9800; color: #fff; }
+    .delete-btn { background: #f44336; color: #fff; }
+
+    #uploadZone {
+      border: 2px dashed #aaa;
+      padding: 40px;
+      text-align: center;
+      color: #888;
+      margin-bottom: 20px;
+      border-radius: 8px;
     }
 
-    .file-entry button {
-      margin-left: 5px;
+    #uploadZone.dragover {
+      border-color: #4CAF50;
+      background: #f0fff0;
+      color: #4CAF50;
     }
+
+    #searchBox {
+      display: block;
+      margin: 0 auto 10px;
+      padding: 10px;
+      font-size: 16px;
+      width: 60%;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+
+    #count {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background-color: #fff;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      font-size: 14px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    tr:nth-child(even){background-color: #f9f9f9;}
+    tr:hover {background-color: #f1f1f1;}
   </style>
 </head>
 <body>
-  <h1>滤芯模糊搜索系统 ✨</h1>
+  <header>
+    滤芯数据管理系统 💼
+    <div id="currentFile">当前文件：未选择</div>
+  </header>
 
-  <div id="uploadZone">拖拽 Excel 到此上传 或 选择文件：
-    <input type="file" id="uploadFile" accept=".xlsx" />
+  <div class="container">
+    <button id="fileManagerToggle">📁 管理文件（点击展开/关闭）</button>
+    <div id="fileManager"></div>
+
+    <div id="uploadZone">
+      拖拽 Excel 文件到这里上传 或 <input type="file" id="uploadFile" accept=".xlsx">
+    </div>
+
+    <input type="text" id="searchBox" placeholder="搜索全部字段…">
+    <div id="count"></div>
+    <div id="results"></div>
   </div>
-
-  <button id="fileManagerToggle">管理文件</button>
-  <div id="fileManager"></div>
-
-  <input type="text" id="searchBox" placeholder="输入关键词模糊搜索…" />
-  <div id="count"></div>
-  <div id="results"></div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
   <script>
-    const uploadZone = document.getElementById("uploadZone");
-    const fileInput = document.getElementById("uploadFile");
-    const fileManager = document.getElementById("fileManager");
-    const fileManagerToggle = document.getElementById("fileManagerToggle");
-
-    let currentFile = null;
-    let allData = {};
+    let data = [];
+    const LOCAL_PREFIX = "xlsx_";
+    let currentKey = "";
 
     const normalize = str => str.toString().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]/gi, '');
 
-    function saveAll() {
-      localStorage.setItem("filterFiles", JSON.stringify(allData));
-    }
-
-    function loadAll() {
-      const saved = localStorage.getItem("filterFiles");
-      if (saved) {
-        allData = JSON.parse(saved);
-      }
-    }
-
-    function renderFileManager() {
-      fileManager.innerHTML = "";
-      if (Object.keys(allData).length === 0) {
-        fileManager.innerHTML = "<p>暂无文件</p>";
-        return;
-      }
-
-      Object.keys(allData).forEach(name => {
-        const div = document.createElement("div");
-        div.className = "file-entry";
-
-        const span = document.createElement("span");
-        span.textContent = name;
-
-        const btnLoad = document.createElement("button");
-        btnLoad.textContent = "加载";
-        btnLoad.onclick = () => {
-          currentFile = name;
-          renderResults(allData[name]);
-        };
-
-        const btnRename = document.createElement("button");
-        btnRename.textContent = "重命名";
-        btnRename.onclick = () => {
-          const newName = prompt("输入新名称：", name);
-          if (newName && !allData[newName]) {
-            allData[newName] = allData[name];
-            delete allData[name];
-            if (currentFile === name) currentFile = newName;
-            saveAll();
-            renderFileManager();
-          }
-        };
-
-        const btnExport = document.createElement("button");
-        btnExport.textContent = "导出";
-        btnExport.onclick = () => {
-          const ws = XLSX.utils.json_to_sheet(allData[name]);
-          const wb = XLSX.utils.book_new();
-          XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
-          XLSX.writeFile(wb, name + ".xlsx");
-        };
-
-        const btnDelete = document.createElement("button");
-        btnDelete.textContent = "清除";
-        btnDelete.onclick = () => {
-          if (confirm("确定删除？")) {
-            delete allData[name];
-            if (currentFile === name) {
-              currentFile = null;
-              renderResults([]);
-            }
-            saveAll();
-            renderFileManager();
-          }
-        };
-
-        div.appendChild(span);
-        div.appendChild(btnLoad);
-        div.appendChild(btnRename);
-        div.appendChild(btnExport);
-        div.appendChild(btnDelete);
-        fileManager.appendChild(div);
-      });
+    function fuzzySearch(query) {
+      const clean = normalize(query);
+      return data.filter(item =>
+        Object.values(item).some(v => v && normalize(v).includes(clean))
+      );
     }
 
     function renderResults(results) {
-      document.getElementById("count").textContent = `共 ${results.length} 条`;
-      if (!results || results.length === 0) {
-        document.getElementById("results").innerHTML = "<p>没有结果</p>";
+      document.getElementById("count").textContent = `共 ${results.length} 条结果`;
+      if (!results.length) {
+        document.getElementById("results").innerHTML = "<p style='text-align:center;'>没有结果 😪</p>";
         return;
       }
       let html = "<table><tr>";
@@ -205,47 +183,92 @@
       document.getElementById("results").innerHTML = html;
     }
 
-    function fuzzySearch(query) {
-      const clean = normalize(query);
-      return allData[currentFile].filter(row =>
-        Object.values(row).some(v => v && normalize(v).includes(clean))
-      );
+    function saveToLocal(key, json) {
+      localStorage.setItem(LOCAL_PREFIX + key, JSON.stringify(json));
     }
 
-    document.getElementById("searchBox").addEventListener("input", function () {
-      const query = this.value.trim();
-      if (currentFile && allData[currentFile]) {
-        renderResults(query ? fuzzySearch(query) : allData[currentFile]);
-      }
-    });
+    function loadFromLocal(key) {
+      const raw = localStorage.getItem(LOCAL_PREFIX + key);
+      if (!raw) return false;
+      data = JSON.parse(raw);
+      currentKey = key;
+      document.getElementById("currentFile").textContent = `当前文件：${key}`;
+      renderResults(data);
+      return true;
+    }
 
-    function handleFile(file) {
-      const reader = new FileReader();
-      reader.onload = function (e) {
-        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-        const sheet = wb.SheetNames[0];
-        const raw = XLSX.utils.sheet_to_json(wb.Sheets[sheet], { header: 1 });
-        const headers = raw[1];
-        const rows = raw.slice(2);
-        const parsed = rows.map(row => {
-          const obj = {};
-          headers.forEach((h, i) => obj[h] = row[i] || "");
-          return obj;
+    function updateFileManager() {
+      const list = document.getElementById("fileManager");
+      list.innerHTML = "";
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k.startsWith(LOCAL_PREFIX)) continue;
+        const name = k.slice(LOCAL_PREFIX.length);
+
+        const row = document.createElement("div");
+        row.className = "file-row";
+
+        const span = document.createElement("span");
+        span.className = "file-name";
+        span.textContent = name;
+
+        const input = document.createElement("input");
+        input.placeholder = "新名称";
+
+        const btnLoad = createBtn("加载", "load-btn", () => loadFromLocal(name));
+        const btnExport = createBtn("导出", "export-btn", () => exportExcel(name));
+        const btnRename = createBtn("重命名", "rename-btn", () => {
+          const newName = input.value.trim();
+          if (!newName) return alert("名称不能为空！");
+          const content = localStorage.getItem(LOCAL_PREFIX + name);
+          localStorage.setItem(LOCAL_PREFIX + newName, content);
+          localStorage.removeItem(LOCAL_PREFIX + name);
+          if (currentKey === name) currentKey = newName;
+          updateFileManager();
+          document.getElementById("currentFile").textContent = `当前文件：${currentKey}`;
+        });
+        const btnDelete = createBtn("删除", "delete-btn", () => {
+          if (confirm("确定删除？")) {
+            localStorage.removeItem(LOCAL_PREFIX + name);
+            if (currentKey === name) {
+              currentKey = "";
+              data = [];
+              renderResults([]);
+              document.getElementById("currentFile").textContent = "当前文件：未选择";
+            }
+            updateFileManager();
+          }
         });
 
-        let name = prompt("输入文件名称：", file.name.replace(".xlsx", ""));
-        while (!name || allData[name]) {
-          name = prompt("名称重复或无效，请重新输入：");
-        }
-        allData[name] = parsed;
-        currentFile = name;
-        saveAll();
-        renderFileManager();
-        renderResults(parsed);
-      };
-      reader.readAsArrayBuffer(file);
+        row.appendChild(span);
+        row.appendChild(input);
+        row.appendChild(btnLoad);
+        row.appendChild(btnExport);
+        row.appendChild(btnRename);
+        row.appendChild(btnDelete);
+        list.appendChild(row);
+      }
     }
 
+    function createBtn(text, cls, fn) {
+      const b = document.createElement("button");
+      b.textContent = text;
+      b.className = cls;
+      b.onclick = fn;
+      return b;
+    }
+
+    document.getElementById("searchBox").addEventListener("input", e => {
+      const q = e.target.value.trim();
+      renderResults(q ? fuzzySearch(q) : data);
+    });
+
+    document.getElementById("uploadFile").addEventListener("change", e => {
+      const file = e.target.files[0];
+      if (file) handleFile(file);
+    });
+
+    const uploadZone = document.getElementById("uploadZone");
     uploadZone.addEventListener("dragover", e => {
       e.preventDefault();
       uploadZone.classList.add("dragover");
@@ -259,22 +282,57 @@
       const file = e.dataTransfer.files[0];
       if (file && file.name.endsWith(".xlsx")) {
         handleFile(file);
+      } else {
+        alert("只能上传 .xlsx 文件！");
       }
     });
 
-    fileInput.addEventListener("change", e => {
-      const file = e.target.files[0];
-      if (file) handleFile(file);
+    function handleFile(file) {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        const workbook = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
+        const sheet = workbook.SheetNames[0];
+        const raw = XLSX.utils.sheet_to_json(workbook.Sheets[sheet], {header: 1});
+        const headers = raw[1];
+        const rows = raw.slice(2);
+        data = rows.map(row => {
+          let obj = {};
+          headers.forEach((k, i) => obj[k] = row[i] || "");
+          return obj;
+        });
+        const filename = file.name.replace(".xlsx", "");
+        saveToLocal(filename, data);
+        currentKey = filename;
+        document.getElementById("currentFile").textContent = `当前文件：${filename}`;
+        renderResults(data);
+        updateFileManager();
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function exportExcel(name) {
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+      XLSX.writeFile(wb, `${name}.xlsx`);
+    }
+
+    // 切换文件管理面板
+    document.getElementById("fileManagerToggle").addEventListener("click", () => {
+      const fm = document.getElementById("fileManager");
+      fm.classList.toggle("open");
+      updateFileManager();
     });
 
-    fileManagerToggle.addEventListener("click", () => {
-      fileManager.style.display = fileManager.style.display === "none" ? "block" : "none";
-      fileManagerToggle.textContent = fileManager.style.display === "none" ? "管理文件" : "关闭管理";
-    });
-
+    // 尝试恢复最近一个文件
     window.onload = () => {
-      loadAll();
-      renderFileManager();
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k.startsWith(LOCAL_PREFIX)) {
+          const name = k.slice(LOCAL_PREFIX.length);
+          if (loadFromLocal(name)) break;
+        }
+      }
     };
   </script>
 </body>
