@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,8 +16,6 @@ export default function TableSearchDashboard() {
   const [showList, setShowList] = useState(true);
   const [hiddenHeaders, setHiddenHeaders] = useState({});
   const [settingsTable, setSettingsTable] = useState(null);
-  const [headerMenu, setHeaderMenu] = useState({ visible: false, x: 0, y: 0, tableName: '', index: null });
-  const isDragging = useRef(false);
 
   useEffect(() => {
     localStorage.setItem("tables", JSON.stringify(tables));
@@ -81,7 +79,6 @@ export default function TableSearchDashboard() {
       updated[tableName][index] = !updated[tableName][index];
       return updated;
     });
-    setHeaderMenu({ visible: false, x: 0, y: 0, tableName: '', index: null });
   };
 
   const handleFiles = (e) => {
@@ -99,8 +96,165 @@ export default function TableSearchDashboard() {
   };
 
   return (
-    <div className="p-6 space-y-6 relative">
-      {/* ... UI组件已省略，这里保持原始代码功能一致 */}
+    <div className="p-6 space-y-6">
+      <div className="text-center">
+        <label className="border-2 border-dashed p-6 rounded-lg inline-block cursor-pointer">
+          拖动文件到这里或点击上传
+          <input
+            type="file"
+            accept=".csv,.tsv,.txt,.xls,.xlsx,.json"
+            multiple
+            onChange={handleFiles}
+            className="hidden"
+          />
+        </label>
+      </div>
+
+      <div className="w-full flex justify-center">
+        <Button onClick={() => setShowList(!showList)}>
+          {showList ? "关闭文件列表" : "打开文件列表"}
+        </Button>
+      </div>
+
+      {showList && (
+        <div className="flex flex-col items-center max-h-64 overflow-auto border p-4 rounded-lg shadow">
+          {tables.map((table) => (
+            <div
+              key={table.id}
+              className="border rounded-lg p-4 shadow w-full max-w-md bg-white mb-2"
+            >
+              <div className="flex justify-between items-center gap-2">
+                <input
+                  type="text"
+                  defaultValue={table.name}
+                  onBlur={(e) => {
+                    const newName = e.target.value;
+                    setTables((prev) =>
+                      prev.map((t) => (t.id === table.id ? { ...t, name: newName } : t))
+                    );
+                  }}
+                  className="border rounded px-2 py-1 w-1/2"
+                />
+                <input
+                  type="checkbox"
+                  checked={table.enabled}
+                  onChange={() => {
+                    setTables((prev) =>
+                      prev.map((t) =>
+                        t.id === table.id ? { ...t, enabled: !t.enabled } : t
+                      )
+                    );
+                  }}
+                />
+                <Button size="sm" onClick={() => {
+                  const input = document.createElement("input");
+                  input.type = "file";
+                  input.accept = ".csv,.tsv,.txt,.xls,.xlsx,.json";
+                  input.onchange = (e) => {
+                    const file = e.target.files[0];
+                    readFile(file, (newTable) => {
+                      setTables((prev) =>
+                        prev.map((t) => (t.id === table.id ? { ...newTable, id: t.id } : t))
+                      );
+                    });
+                  };
+                  input.click();
+                }}>重新读取</Button>
+                <Button size="sm" onClick={() => removeTableById(table.id)}>删除</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="flex justify-center">
+        <Input
+          placeholder="模糊搜索关键词"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-1/2 text-center text-lg py-3 px-2 border-2 border-blue-400 shadow-md"
+        />
+      </div>
+
+      {searchTerm && tables.filter(t => t.enabled).map((table) => {
+        const term = searchTerm.toLowerCase().replace(/[^\w一-龥]/g, "");
+        const isTxt = table.name.endsWith(".txt");
+        const results = table.data.filter((row) =>
+          row.some((cell) =>
+            String(cell).toLowerCase().replace(/[^\w一-龥]/g, "").includes(term)
+          )
+        );
+
+        return results.length > 0 ? (
+          <Card key={table.id}>
+            <CardContent className="p-4 space-y-4 overflow-x-auto">
+              <div className="text-lg font-semibold flex justify-between items-center">
+                来自文件：{table.name}
+                {!isTxt && (
+                  <Button size="sm" onClick={() => setSettingsTable(table.name)}>设置</Button>
+                )}
+              </div>
+              <Table className="border border-gray-300 min-w-full">
+                <TableHeader>
+                  {!isTxt && (
+                    <TableRow>
+                      {table.headers.map((header, idx) => (
+                        !hiddenHeaders[table.name]?.[idx] && (
+                          <TableHead
+                            key={idx}
+                            className="border border-gray-300 cursor-pointer whitespace-nowrap"
+                            onClick={() => toggleHeader(table.name, idx)}
+                          >
+                            {header}
+                          </TableHead>
+                        )
+                      ))}
+                    </TableRow>
+                  )}
+                </TableHeader>
+                <TableBody>
+                  {results.map((row, idx) => (
+                    <TableRow key={idx}>
+                      {table.headers.map((_, i) => (
+                        !hiddenHeaders[table.name]?.[i] && (
+                          <TableCell key={i} className="border border-gray-300 whitespace-nowrap">
+                            {row[i] ?? ""}
+                          </TableCell>
+                        )
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        ) : (
+          <div key={table.id} className="text-center text-gray-500">
+            文件「{table.name}」中未找到“{searchTerm}”相关内容
+          </div>
+        );
+      })}
+
+      {settingsTable && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center" onClick={() => setSettingsTable(null)}>
+          <div className="bg-white p-4 rounded shadow-lg w-80" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <div className="font-bold">隐藏列设置</div>
+              <Button size="sm" onClick={() => setSettingsTable(null)}>×</Button>
+            </div>
+            {(tables.find(t => t.name === settingsTable)?.headers || []).map((header, idx) => (
+              <div key={idx} className="flex justify-between items-center mb-2">
+                <span>{header}</span>
+                <input
+                  type="checkbox"
+                  checked={!hiddenHeaders[settingsTable]?.[idx]}
+                  onChange={() => toggleHeader(settingsTable, idx)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
