@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,19 +7,51 @@ import Papa from "papaparse";
 import * as XLSX from "xlsx";
 
 export default function TableSearchDashboard() {
-  const [tables, setTables] = useState(() => {
-    const saved = localStorage.getItem("tables");
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [activeTab, setActiveTab] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const [showList, setShowList] = useState(true);
-  const [hiddenHeaders, setHiddenHeaders] = useState({});
-  const [settingsTable, setSettingsTable] = useState(null);
+  const [tables, setTables] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [hiddenColumns, setHiddenColumns] = useState({});
+  const [contextLines, setContextLines] = useState({}); // for txt context
 
-  useEffect(() => {
-    localStorage.setItem("tables", JSON.stringify(tables));
-  }, [tables]);
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    handleNewFiles(files);
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = () => {
+    setDragOver(false);
+  };
+
+  const handleNewFiles = (files) => {
+    files.forEach((file) => {
+      const filename = file.name;
+      const exists = tables.some((t) => t.name === filename);
+      if (exists) {
+        const allow = window.confirm(`${filename} 已存在，是否覆盖？`);
+        if (!allow) return;
+      }
+      readFile(file, (table) => {
+        setTables((prev) => {
+          const filtered = prev.filter((t) => t.name !== table.name);
+          return [...filtered, table];
+        });
+      });
+    });
+  };
+
+  const handleFiles = (e) => {
+    const files = Array.from(e.target.files);
+    handleNewFiles(files);
+  };
+
 
   const readFile = (file, callback) => {
     const reader = new FileReader();
@@ -27,19 +59,23 @@ export default function TableSearchDashboard() {
 
     reader.onload = (event) => {
       let data;
-      if (["csv", "tsv", "txt"].includes(ext)) {
+      if (["csv", "tsv"].includes(ext)) {
         Papa.parse(event.target.result, {
           complete: (results) => {
-            data = results.data;
-            if (data && data.length > 0) callback(processData(file.name, data));
+            callback(processData(file.name, results.data, "table"));
           },
         });
       } else if (["xls", "xlsx"].includes(ext)) {
         const workbook = XLSX.read(event.target.result, { type: "binary" });
         const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        data = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: false });
-        if (data && data.length > 0) callback(processData(file.name, data));
+        const worksheet = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+          header: 1,
+          raw: false,
+        });
+        callback(processData(file.name, worksheet, "table"));
+      } else if (["txt"].includes(ext)) {
+        const lines = event.target.result.split(/\r?\n/);
+        callback(processData(file.name, lines, "txt"));
       }
     };
 
@@ -50,59 +86,84 @@ export default function TableSearchDashboard() {
     }
   };
 
-  const processData = (name, data) => {
-    const headers = autoDetectHeaders(data);
-    const trimmedData = data.slice(headers.index + 1).filter(row => row.length > 0);
-    return {
-      name,
-      headers: headers.values,
-      data: trimmedData,
-      enabled: true,
-      id: `${name}_${Date.now()}`
-    };
-  };
-
-  const autoDetectHeaders = (data) => {
-    for (let i = 0; i < Math.min(5, data.length); i++) {
-      const row = data[i];
-      if (row && row.length >= 2 && row.filter((cell) => typeof cell === "string" && cell.trim() !== "").length >= 2) {
-        return { index: i, values: row };
-      }
+  const processData = (name, data, type) => {
+    if (type === "txt") {
+      return {
+        name,
+        type,
+        data,
+        enabled: true,
+      };
+    } else {
+      const headers = data[0];
+      const rows = data.slice(1);
+      return {
+        name,
+        type,
+        headers,
+        data: rows,
+        enabled: true,
+      };
     }
-    return { index: 0, values: data[0] || [] };
   };
 
-  const toggleHeader = (tableName, index) => {
-    setHiddenHeaders((prev) => {
-      const updated = { ...prev };
-      updated[tableName] = updated[tableName] || {};
-      updated[tableName][index] = !updated[tableName][index];
-      return updated;
-    });
-  };
 
-  const handleFiles = (e) => {
-    const files = Array.from(e.target.files);
-    files.forEach((file) => {
-      readFile(file, (table) => {
-        setTables((prev) => [...prev, table]);
-        if (!activeTab) setActiveTab(table.name);
+  const getFilteredRows = (table) => {
+    if (!searchTerm.trim()) return [];
+
+    const term = searchTerm.toLowerCase().replace(/[^\w一-龥]/g, "");
+
+    if (table.type === "txt") {
+      const lines = table.data;
+      const results = [];
+
+      lines.forEach((line, idx) => {
+        const clean = line.toLowerCase().replace(/[^\w一-龥]/g, "");
+        if (clean.includes(term)) {
+          const context = contextLines[table.name] ?? 2;
+          const start = Math.max(0, idx - context);
+          const end = Math.min(lines.length, idx + context + 1);
+          const chunk = lines.slice(start, end);
+          results.push({ context: chunk, index: idx });
+        }
       });
-    });
+
+      return results;
+    } else {
+      return table.data.filter((row) =>
+        row.some((cell) =>
+          String(cell).toLowerCase().replace(/[^\w一-龥]/g, "").includes(term)
+        )
+      );
+    }
   };
 
-  const removeTableById = (id) => {
-    setTables((prev) => prev.filter((t) => t.id !== id));
+  const removeTable = (name) => {
+    setTables((prev) => prev.filter((t) => t.name !== name));
+  };
+
+  const toggleColumn = (tableName, index) => {
+    setHiddenColumns((prev) => {
+      const next = { ...prev };
+      if (!next[tableName]) next[tableName] = {};
+      next[tableName][index] = !next[tableName][index];
+      return next;
+    });
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div
+      className={`p-6 space-y-6 relative ${dragOver ? "bg-blue-50" : ""}`}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+    >
       <div className="text-center">
         <label className="border-2 border-dashed p-6 rounded-lg inline-block cursor-pointer">
           拖动文件到这里或点击上传
           <input
             type="file"
-            accept=".csv,.tsv,.txt,.xls,.xlsx,.json"
+            accept=".csv,.tsv,.txt,.xls,.xlsx"
             multiple
             onChange={handleFiles}
             className="hidden"
@@ -120,7 +181,7 @@ export default function TableSearchDashboard() {
         <div className="flex flex-col items-center max-h-64 overflow-auto border p-4 rounded-lg shadow">
           {tables.map((table) => (
             <div
-              key={table.id}
+              key={table.name}
               className="border rounded-lg p-4 shadow w-full max-w-md bg-white mb-2"
             >
               <div className="flex justify-between items-center gap-2">
@@ -130,7 +191,11 @@ export default function TableSearchDashboard() {
                   onBlur={(e) => {
                     const newName = e.target.value;
                     setTables((prev) =>
-                      prev.map((t) => (t.id === table.id ? { ...t, name: newName } : t))
+                      prev.map((t) =>
+                        t.name === table.name
+                          ? { ...t, name: newName }
+                          : t
+                      )
                     );
                   }}
                   className="border rounded px-2 py-1 w-1/2"
@@ -141,33 +206,21 @@ export default function TableSearchDashboard() {
                   onChange={() => {
                     setTables((prev) =>
                       prev.map((t) =>
-                        t.id === table.id ? { ...t, enabled: !t.enabled } : t
+                        t.name === table.name ? { ...t, enabled: !t.enabled } : t
                       )
                     );
                   }}
                 />
-                <Button size="sm" onClick={() => {
-                  const input = document.createElement("input");
-                  input.type = "file";
-                  input.accept = ".csv,.tsv,.txt,.xls,.xlsx,.json";
-                  input.onchange = (e) => {
-                    const file = e.target.files[0];
-                    readFile(file, (newTable) => {
-                      setTables((prev) =>
-                        prev.map((t) => (t.id === table.id ? { ...newTable, id: t.id } : t))
-                      );
-                    });
-                  };
-                  input.click();
-                }}>重新读取</Button>
-                <Button size="sm" onClick={() => removeTableById(table.id)}>删除</Button>
+                <Button size="sm" onClick={() => removeTable(table.name)}>
+                  删除
+                </Button>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <div className="flex justify-center">
+      <div className="w-full flex justify-center">
         <Input
           placeholder="模糊搜索关键词"
           value={searchTerm}
@@ -176,85 +229,103 @@ export default function TableSearchDashboard() {
         />
       </div>
 
-      {searchTerm && tables.filter(t => t.enabled).map((table) => {
-        const term = searchTerm.toLowerCase().replace(/[^\w一-龥]/g, "");
-        const isTxt = table.name.endsWith(".txt");
-        const results = table.data.filter((row) =>
-          row.some((cell) =>
-            String(cell).toLowerCase().replace(/[^\w一-龥]/g, "").includes(term)
-          )
-        );
-
-        return results.length > 0 ? (
-          <Card key={table.id}>
-            <CardContent className="p-4 space-y-4 overflow-x-auto">
-              <div className="text-lg font-semibold flex justify-between items-center">
-                来自文件：{table.name}
-                {!isTxt && (
-                  <Button size="sm" onClick={() => setSettingsTable(table.name)}>设置</Button>
-                )}
+      {searchTerm.trim() &&
+        tables.filter((t) => t.enabled).map((table) => {
+          const results = getFilteredRows(table);
+          if (results.length === 0) {
+            return (
+              <div key={table.name} className="text-center text-gray-500">
+                文件「{table.name}」中未找到“{searchTerm}”相关内容
               </div>
-              <Table className="border border-gray-300 min-w-full">
-                <TableHeader>
-                  {!isTxt && (
+            );
+          }
+
+          if (table.type === "txt") {
+            return (
+              <Card key={table.name}>
+                <CardContent className="p-4 space-y-4">
+                  <div className="text-lg font-semibold">来自文件：{table.name}</div>
+                  {results.map((res, idx) => (
+                    <div key={idx} className="bg-gray-100 p-3 rounded border relative">
+                      <div className="absolute right-3 top-2 flex gap-1">
+                        <button
+                          onClick={() =>
+                            setContextLines((prev) => ({
+                              ...prev,
+                              [table.name]: Math.max(1, (prev[table.name] || 2) - 1),
+                            }))
+                          }
+                        >
+                          ▲
+                        </button>
+                        <button
+                          onClick={() =>
+                            setContextLines((prev) => ({
+                              ...prev,
+                              [table.name]: (prev[table.name] || 2) + 1,
+                            }))
+                          }
+                        >
+                          ▼
+                        </button>
+                      </div>
+                      {res.context.map((line, i) => (
+                        <div key={i} className="whitespace-pre-wrap break-words">
+                          {line}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            );
+          }
+
+          return (
+            <Card key={table.name}>
+              <CardContent className="p-4 space-y-4 overflow-auto">
+                <div className="text-lg font-semibold">来自文件：{table.name}</div>
+                <Table className="border border-gray-300 w-full">
+                  <TableHeader>
                     <TableRow>
-                      {table.headers.map((header, idx) => (
-                        !hiddenHeaders[table.name]?.[idx] && (
+                      {table.headers.map((header, idx) =>
+                        hiddenColumns[table.name]?.[idx] ? null : (
                           <TableHead
                             key={idx}
-                            className="border border-gray-300 cursor-pointer whitespace-nowrap"
-                            onClick={() => toggleHeader(table.name, idx)}
+                            className="border border-gray-300 cursor-pointer relative group"
+                            onClick={() => toggleColumn(table.name, idx)}
+                            style={{ resize: "horizontal", overflow: "auto" }}
                           >
                             {header}
+                            <span className="absolute right-1 top-1 text-xs text-blue-400 hidden group-hover:inline">
+                              👁 隐藏
+                            </span>
                           </TableHead>
                         )
-                      ))}
+                      )}
                     </TableRow>
-                  )}
-                </TableHeader>
-                <TableBody>
-                  {results.map((row, idx) => (
-                    <TableRow key={idx}>
-                      {table.headers.map((_, i) => (
-                        !hiddenHeaders[table.name]?.[i] && (
-                          <TableCell key={i} className="border border-gray-300 whitespace-nowrap">
-                            {row[i] ?? ""}
-                          </TableCell>
-                        )
-                      ))}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        ) : (
-          <div key={table.id} className="text-center text-gray-500">
-            文件「{table.name}」中未找到“{searchTerm}”相关内容
-          </div>
-        );
-      })}
-
-      {settingsTable && (
-        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center" onClick={() => setSettingsTable(null)}>
-          <div className="bg-white p-4 rounded shadow-lg w-80" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <div className="font-bold">隐藏列设置</div>
-              <Button size="sm" onClick={() => setSettingsTable(null)}>×</Button>
-            </div>
-            {(tables.find(t => t.name === settingsTable)?.headers || []).map((header, idx) => (
-              <div key={idx} className="flex justify-between items-center mb-2">
-                <span>{header}</span>
-                <input
-                  type="checkbox"
-                  checked={!hiddenHeaders[settingsTable]?.[idx]}
-                  onChange={() => toggleHeader(settingsTable, idx)}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+                  </TableHeader>
+                  <TableBody>
+                    {results.map((row, idx) => (
+                      <TableRow key={idx}>
+                        {table.headers.map((_, i) =>
+                          hiddenColumns[table.name]?.[i] ? null : (
+                            <TableCell
+                              key={i}
+                              className="border border-gray-300 whitespace-pre-wrap break-words"
+                            >
+                              {String(row[i] ?? "").split(/(?<=[，。！？；])/).join("\n")}
+                            </TableCell>
+                          )
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          );
+        })}
     </div>
   );
 }
